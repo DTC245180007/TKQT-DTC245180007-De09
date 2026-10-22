@@ -1,5 +1,5 @@
 services:
-  # 1. Cơ sở dữ liệu MySQL
+  # 1. Database MySQL (Hardening: Mật khẩu mạnh, nằm trong backend_net)
   db:
     image: mysql:8.0
     container_name: ecommerce_db
@@ -14,7 +14,7 @@ services:
     networks:
       - backend_net
 
-  # 2. Ứng dụng Node.js E-Commerce
+  # 2. Web App Node.js (Hardening: User Non-root 'node')
   web:
     build: ./app
     container_name: ecommerce_app
@@ -46,7 +46,7 @@ services:
       - backend_net
       - frontend_net
 
-  # 4. Nginx Reverse Proxy
+  # 4. Nginx Reverse Proxy (Hardening: HTTPS SSL, Security Headers, Ẩn version)
   nginx:
     image: nginx:alpine
     container_name: ecommerce_nginx
@@ -78,7 +78,7 @@ services:
     networks:
       - backend_net
 
-  # 6. Node Exporter giám sát tài nguyên Server (CPU, RAM, Disk)
+  # 6. Node Exporter giám sát tài nguyên máy chủ
   node-exporter:
     image: prom/node-exporter:latest
     container_name: ecommerce_node_exporter
@@ -126,7 +126,37 @@ services:
       - backend_net
       - frontend_net
 
-  # 9. Grafana hiển thị Dashboard
+  # 9. Hệ thống lưu trữ Log Loki
+  loki:
+    image: grafana/loki:latest
+    container_name: ecommerce_loki
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - backend_net
+      - frontend_net
+
+  # 10. Agent thu thập log Promtail
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ecommerce_promtail
+    restart: always
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - backend_net
+      - frontend_net
+
+  # 11. Grafana trực quan hóa số liệu và log
   grafana:
     image: grafana/grafana:latest
     container_name: ecommerce_grafana
@@ -137,9 +167,11 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+      - loki
     networks:
       - frontend_net
 
+# Hardening: Network Isolation tách biệt mạng ngoại vi và mạng dữ liệu
 networks:
   frontend_net:
     driver: bridge
@@ -150,3 +182,4 @@ volumes:
   db_data:
   prometheus_data:
   grafana_data:
+  loki_data:
